@@ -26,6 +26,7 @@ This file is part of DarkStar-server source code.
 #include "console.h"
 #include "functions.h"
 #include "network.h"
+#include "update.h"
 
 /* Global Variables */
 xiloader::Language g_Language = xiloader::Language::English; // The language of the loader to be used for polcore.
@@ -36,6 +37,11 @@ std::string g_Password = ""; // The password being logged in with.
 char* g_CharacterList = NULL; // Pointer to the character list data being sent from the server.
 bool g_IsRunning = false; // Flag to determine if the network threads should hault.
 bool g_Hide = false; // Determines whether or not to hide the console window after FFXI starts.
+bool g_CheckUpdate = true; // Whether to check and possibly autoupdate on startup
+DWORD g_UpdatePhase = 0; // Are we in the middle of an update process
+std::string g_OldFile = ""; // If in an update process, full file path of the old loader
+DWORD g_OldPID = 0; // If in an update process, PID of the parent
+
 
 /* Hairpin Fix Variables */
 DWORD g_NewServerAddress; // Hairpin server address to be overriden with.
@@ -196,9 +202,12 @@ int __cdecl main(int argc, char* argv[])
     /* Output the DarkStar banner.. */
     xiloader::console::output(xiloader::color::lightred, "==========================================================");
     xiloader::console::output(xiloader::color::lightgreen, "DarkStar Boot Loader (c) 2015 DarkStar Team");
-    xiloader::console::output(xiloader::color::lightpurple, "Bug Reports: https://github.com/DarkstarProject/darkstar/issues");
     xiloader::console::output(xiloader::color::lightpurple, "Git Repo   : https://github.com/DarkstarProject/darkstar");
-    xiloader::console::output(xiloader::color::lightred, "==========================================================");
+	xiloader::console::output(xiloader::color::lightgreen, "Modified for use with the Wings Project (c) 2021 Wings");
+	xiloader::console::output(xiloader::color::lightgreen, "Version: " LOADER_CURRENT_VERSION_STR);
+	xiloader::console::output(xiloader::color::lightpurple, "Website    : https://www.wingsxi.com");
+	xiloader::console::output(xiloader::color::lightpurple, "Git Repo   : https://gitlab.com/ffxiwings/wings");
+	xiloader::console::output(xiloader::color::lightred, "==========================================================");
 
     /* Initialize Winsock */
     WSADATA wsaData = { 0 };
@@ -294,10 +303,60 @@ int __cdecl main(int argc, char* argv[])
             continue;
         }
 
-        xiloader::console::output(xiloader::color::warning, "Found unknown command argument: %s", argv[x]);
+		if (!_strnicmp(argv[x], "--noupdate", 10))
+		{
+			g_CheckUpdate = false;
+			continue;
+		}
+
+		if (!_strnicmp(argv[x], "--runupdate", 11))
+		{
+			g_UpdatePhase = 1;
+			continue;
+		}
+
+		if (!_strnicmp(argv[x], "--finishupdate", 14))
+		{
+			g_UpdatePhase = 2;
+			continue;
+		}
+
+		if (!_strnicmp(argv[x], "--oldfile", 9))
+		{
+			g_OldFile = argv[++x];
+			continue;
+		}
+
+		if (!_strnicmp(argv[x], "--oldpid", 8))
+		{
+			g_OldPID = strtoul(argv[++x], NULL, 0);
+			continue;
+		}
+
+		xiloader::console::output(xiloader::color::warning, "Found unknown command argument: %s", argv[x]);
     }
 
-    /* Attempt to resolve the server address.. */
+	// Check for updates
+	if (g_CheckUpdate) {
+		switch (g_UpdatePhase) {
+		case 1:
+			xiloader::console::output(xiloader::color::info, "Performing update, please wait");
+			xiloader::PerformUpdate(g_OldFile.c_str(), g_OldPID);
+			return ERROR_SUCCESS;
+		case 2:
+			xiloader::DeleteOldFile(g_OldFile.c_str());
+			break;
+		default:
+			// Nothing
+			break;
+		}
+		DWORD rv = xiloader::CheckUpdateUI();
+		if ((rv != 1) && (rv != 0)) {
+			return ERROR_SUCCESS;
+		}
+	}
+
+	/* Attempt to resolve the server address.. */
     ULONG ulAddress = 0;
     if (xiloader::network::ResolveHostname(g_ServerAddress.c_str(), &ulAddress))
     {

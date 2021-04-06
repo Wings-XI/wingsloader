@@ -6,11 +6,11 @@ CLS
 :: -1 - variable used for server not found
 :: -2 - DirectPlay not installed
 :: -3 - POL path not found
-:: -4 - xiloader not in POL path
+:: -4 - wingsloader not in POL path
 
 IF %1.==. (
     @ECHO Server not provided:
-    @ECHO xiloader dankstar.server.biz
+    @ECHO wingsloader dankstar.server.biz
     EXIT /B -1
 )
 
@@ -41,11 +41,11 @@ FOR %%I IN %POL_PATH_REGKEYS% DO (
 
 :PATH_FOUND
 IF DEFINED POL_PATH (
-    IF EXIST "%POL_PATH%\xiloader.exe" (
-        START /d "%POL_PATH%" xiloader --server %1
+    IF EXIST "%POL_PATH%\wingsloader.exe" (
+        START /d "%POL_PATH%" wingsloader --server %1
     ) ELSE (
-        @ECHO xiloader.exe not found in POL path
-        @ECHO Copy xiloader.exe to %POL_PATH%
+        @ECHO wingsloader.exe not found in POL path
+        @ECHO Copy wingsloader.exe to %POL_PATH%
         EXIT /B -4
     )
 ) ELSE (
