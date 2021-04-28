@@ -22,12 +22,15 @@ This file is part of DarkStar-server source code.
 */
 
 #include "network.h"
+#include "functions.h"
 
 /* Externals */
 extern std::string g_ServerAddress;
 extern std::string g_Username;
 extern std::string g_Password;
 extern std::string g_ServerPort;
+extern std::string g_DataPort;
+extern std::string g_POLPort;
 extern char* g_CharacterList;
 extern bool g_IsRunning;
 
@@ -195,6 +198,34 @@ namespace xiloader
         return true;
     }
 
+	std::string network::TranslateErrorCode(AUTHENTICATION_ERROR ErrorCode)
+	{
+		switch (ErrorCode) {
+		case AUTH_SUCCESS:
+			return "Authentication succeeded.";
+		case AUTH_NO_USER_OR_BAD_PASSWORD:
+			return "Unknown username or incorrect password.";
+		case AUTH_USERNAME_TAKEN:
+			return "The chosen username is already taken.";
+		case AUTH_PASSWORD_TOO_WEAK:
+			return "The chosen password is too weak.";
+		case AUTH_INTERNAL_FAILURE:
+			return "Internal server failure.";
+		case AUTH_ACCOUNT_DISABLED:
+			return "The account is disabled or banned.";
+		case AUTH_MAINTENANCE_MODE:
+			return "The server is currently in maintenance mode.";
+		case AUTH_BOOTLOADER_SIGNUP_DISABLED:
+			return "User registration through the bootloader is disabled on this server.";
+		case AUTH_ANOTHER_ACCOUNT_SHARES_IP:
+			return "Another account is already associated to this IP address.";
+		case AUTH_SESSION_EXISTS:
+			return "A user is already connected to this account from another IP address.";
+		default:
+			return "Unknown error: " + std::to_string(ErrorCode);
+		}
+	}
+
     /**
      * @brief Verifies the players login information; also handles creating new accounts.
      *
@@ -205,14 +236,17 @@ namespace xiloader
     bool network::VerifyAccount(datasocket* sock)
     {
         static bool bFirstLogin = true;
+		uint16_t wFailureReason = 0;
+		std::string strFailReason;
+		uint16_t wSendSize = 33;
 
-        char recvBuffer[1024] = { 0 };
-        char sendBuffer[1024] = { 0 };
+        unsigned char recvBuffer[1024] = { 0 };
+        unsigned char sendBuffer[1024] = { 0 };
 
         /* Create connection if required.. */
         if (sock->s == NULL || sock->s == INVALID_SOCKET)
         {
-            if (!xiloader::network::CreateConnection(sock, "54231"))
+            if (!xiloader::network::CreateConnection(sock, g_ServerPort.c_str()))
                 return false;
         }
 
@@ -227,67 +261,76 @@ namespace xiloader
             xiloader::console::output("What would you like to do?");
             xiloader::console::output("   1.) Login");
             xiloader::console::output("   2.) Create New Account");
+			xiloader::console::output("   3.) Change Password");
             xiloader::console::output("==========================================================");
             printf("\nEnter a selection: ");
 
             std::string input;
+			std::string strNewPassword;
             std::cin >> input;
             std::cout << std::endl;
 
-            /* User wants to log into an existing account.. */
             if (input == "1")
             {
-                xiloader::console::output("Please enter your login information.");
+				/* User wants to log into an existing account.. */
+				xiloader::console::output("Please enter your login information.");
                 std::cout << "\nUsername: ";
                 std::cin >> g_Username;
                 std::cout << "Password: ";
-                g_Password.clear();
-
-                /* Read in each char and instead of displaying it. display a "*" */
-                char ch;
-                while ((ch = static_cast<char>(_getch())) != '\r')
-                {
-                    if (ch == '\0')
-                        continue;
-                    else if (ch == '\b')
-                    {
-                        if (g_Password.size())
-                        {
-                            g_Password.pop_back();
-                            std::cout << "\b \b";
-                        }
-                    }
-                    else
-                    {
-                        g_Password.push_back(ch);
-                        std::cout << '*';
-                    }
-                }
-                std::cout << std::endl;
+				g_Password = functions::ReadPassword();
 
                 sendBuffer[0x20] = 0x10;
             }
-            /* User wants to create a new account.. */
             else if (input == "2")
             {
-            create_account:
-                xiloader::console::output("Please enter your desired login information.");
-                std::cout << "\nUsername (3-15 characters): ";
-                std::cin >> g_Username;
-                std::cout << "Password (6-15 characters): ";
-                std::cin >> g_Password;
-                std::cout << "Repeat Password           : ";
-                std::cin >> input;
-                std::cout << std::endl;
+				/* User wants to create a new account.. */
+				while (true) {
+					xiloader::console::output("Please enter your desired login information.");
+					std::cout << "\nUsername (3-15 characters): ";
+					std::cin >> g_Username;
+					std::cout << "Password (6-15 characters): ";
+					g_Password = functions::ReadPassword();
+					std::cout << "Repeat Password           : ";
+					input = functions::ReadPassword();
+					std::cout << std::endl;
 
-                if (input != g_Password)
-                {
-                    xiloader::console::output(xiloader::color::error, "Passwords did not match! Please try again.");
-                    goto create_account;
-                }
+					if (input != g_Password)
+					{
+						xiloader::console::output(xiloader::color::error, "Passwords did not match! Please try again.");
+						continue;
+					}
+					break;
+				}
 
                 sendBuffer[0x20] = 0x20;
             }
+			else if (input == "3")
+			{
+				/* User wants to change password.. */
+				while (true) {
+					xiloader::console::output("Please enter your login information.");
+					std::cout << "\nUsername: ";
+					std::cin >> g_Username;
+					std::cout << "Password: ";
+					g_Password = functions::ReadPassword();
+					std::cout << "New Password (6-15 characters): ";
+					strNewPassword = functions::ReadPassword();
+					std::cout << "Repeat Password               : ";
+					input = functions::ReadPassword();
+					std::cout << std::endl;
+
+					if (input != strNewPassword)
+					{
+						xiloader::console::output(xiloader::color::error, "Passwords did not match! Please try again.");
+						continue;
+					}
+					break;
+				}
+
+				memcpy(sendBuffer + 0x21, strNewPassword.c_str(), 16);
+				sendBuffer[0x20] = 0x80;
+				wSendSize += 16;
+			}
 
             std::cout << std::endl;
         }
@@ -295,16 +338,16 @@ namespace xiloader
         {
             /* User has auto-login enabled.. */
             sendBuffer[0x20] = 0x10;
-            bFirstLogin = false;
         }
+		bFirstLogin = false;
 
         /* Copy username and password into buffer.. */
         memcpy(sendBuffer + 0x00, g_Username.c_str(), 16);
         memcpy(sendBuffer + 0x10, g_Password.c_str(), 16);
 
         /* Send info to server and obtain response.. */
-        send(sock->s, sendBuffer, 33, 0);
-        recv(sock->s, recvBuffer, 16, 0);
+        send(sock->s, (char*)sendBuffer, wSendSize, 0);
+        recv(sock->s, (char*)recvBuffer, 16, 0);
 
         /* Handle the obtained result.. */
         switch (recvBuffer[0])
@@ -317,7 +360,9 @@ namespace xiloader
             return true;
 
         case 0x0002: // Error (Login)
-            xiloader::console::output(xiloader::color::error, "Failed to login. Invalid username or password.");
+			wFailureReason = *reinterpret_cast<uint16_t*>(recvBuffer + 5);
+			strFailReason = wFailureReason ? TranslateErrorCode(static_cast<AUTHENTICATION_ERROR>(wFailureReason)) : "";
+            xiloader::console::output(xiloader::color::error, "Failed to login. %s", strFailReason.c_str());
             closesocket(sock->s);
             sock->s = INVALID_SOCKET;
             return false;
@@ -329,11 +374,28 @@ namespace xiloader
             return false;
 
         case 0x0004: // Error (Create Account)
-            xiloader::console::output(xiloader::color::error, "Failed to create the new account. Username already taken.");
+			wFailureReason = *reinterpret_cast<uint16_t*>(recvBuffer + 5);
+			strFailReason = wFailureReason ? TranslateErrorCode(static_cast<AUTHENTICATION_ERROR>(wFailureReason)) : "";
+			xiloader::console::output(xiloader::color::error, "Failed to create the new account. %s", strFailReason.c_str());
             closesocket(sock->s);
             sock->s = INVALID_SOCKET;
             return false;
-        }
+
+		case 0x0005: // Success (Change Password)
+			xiloader::console::output(xiloader::color::success, "Password changed successfully!");
+			closesocket(sock->s);
+			sock->s = INVALID_SOCKET;
+			return false;
+
+		case 0x0006: // Error (Change Password)
+			wFailureReason = *reinterpret_cast<uint16_t*>(recvBuffer + 5);
+			strFailReason = wFailureReason ? TranslateErrorCode(static_cast<AUTHENTICATION_ERROR>(wFailureReason)) : "";
+			xiloader::console::output(xiloader::color::error, "Failed to change password. %s", strFailReason.c_str());
+			closesocket(sock->s);
+			sock->s = INVALID_SOCKET;
+			return false;
+
+		}
 
         /* We should not get here.. */
         closesocket(sock->s);
@@ -392,9 +454,11 @@ namespace xiloader
                     g_CharacterList[0x18 + (x * 0x68)] = 0x20;
                     g_CharacterList[0x28 + (x * 0x68)] = 0x20;
 
+#if defined(DEBUG) || defined(_DEBUG)
 					DWORD dwCharID = *(recvBuffer + 0x10 * (x + 1) + 4);
 					DWORD dwContentID = *(recvBuffer + 0x10 * (x + 1));
 					xiloader::console::output(xiloader::color::warning, "Charater %u: ContentID=%u, CharID=%u", x, dwContentID, dwCharID);
+#endif
                     memcpy(g_CharacterList + 0x04 + (x * 0x68), recvBuffer + 0x10 * (x + 1) + 4, 4); // Character Id
                     memcpy(g_CharacterList + 0x08 + (x * 0x68), recvBuffer + 0x10 * (x + 1), 4); // Content Id
                 }
@@ -505,7 +569,7 @@ namespace xiloader
     DWORD __stdcall network::FFXiServer(LPVOID lpParam)
     {
         /* Attempt to create connection to the server.. */
-        if (!xiloader::network::CreateConnection((xiloader::datasocket*)lpParam, "54230"))
+        if (!xiloader::network::CreateConnection((xiloader::datasocket*)lpParam, g_DataPort.c_str()))
             return 1;
 
         /* Attempt to start data communication with the server.. */
@@ -529,7 +593,7 @@ namespace xiloader
         SOCKET sock, client;
 
         /* Attempt to create listening server.. */
-        if (!xiloader::network::CreateListenServer(&sock, IPPROTO_TCP, g_ServerPort.c_str()))
+        if (!xiloader::network::CreateListenServer(&sock, IPPROTO_TCP, g_POLPort.c_str()))
             return 1;
 
         while (g_IsRunning)

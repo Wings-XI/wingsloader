@@ -52,7 +52,25 @@ namespace xiloader
         ULONG ServerAddress;
     } datasocket;
 
-    /**
+	/**
+	 *  Possible errors returned by the authentication process
+	 */
+	enum AUTHENTICATION_ERROR
+	{
+		AUTH_SUCCESS = 0,
+		AUTH_NO_USER_OR_BAD_PASSWORD = 1,
+		AUTH_USERNAME_TAKEN = 2,
+		AUTH_PASSWORD_TOO_WEAK = 3,
+		AUTH_INTERNAL_FAILURE = 4,
+		AUTH_ACCOUNT_DISABLED = 5,
+		AUTH_MAINTENANCE_MODE = 6,
+		AUTH_BOOTLOADER_SIGNUP_DISABLED = 7,
+		AUTH_ANOTHER_ACCOUNT_SHARES_IP = 8,
+		AUTH_SESSION_EXISTS = 9,
+		AUTH_LAST
+	};
+	
+	/**
      * @brief Network class containing functions related to networking.
      */
     class network
@@ -116,6 +134,13 @@ namespace xiloader
          * @return True on success, false otherwise.
          */
         static bool VerifyAccount(datasocket* sock);
+
+		/**
+		 *	Translate an authentication error code into a human readable string.
+		 *	@param ErrorCode Error code to translate
+		 *	@return Human readable string representing the error
+		 */
+		static std::string TranslateErrorCode(AUTHENTICATION_ERROR ErrorCode);
         
         /**
          * @brief Starts the data communication between the client and server.

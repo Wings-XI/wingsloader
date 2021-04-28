@@ -67,6 +67,13 @@ namespace xiloader
          */
         static DWORD FindPattern(const char* moduleName, const unsigned char* lpPattern, const char* pszMask);
 
+		/**
+		 *	Read a password from the keyboard without displaying it.
+		 *	(displays asterisks instead)
+		 *	@return Entered password
+		 */
+		static std::string ReadPassword();
+
         /**
          * @brief Obtains the PlayOnline registry key.
          *  "SOFTWARE\PlayOnlineXX"

@@ -30,8 +30,10 @@ This file is part of DarkStar-server source code.
 
 /* Global Variables */
 xiloader::Language g_Language = xiloader::Language::English; // The language of the loader to be used for polcore.
-std::string g_ServerAddress = "127.0.0.1"; // The server address to connect to.
-std::string g_ServerPort = "51220"; // The server lobby server port to connect to.
+std::string g_ServerAddress = "game.wingsxi.com"; // The server address to connect to.
+std::string g_ServerPort = "54231"; // The server authentication server port to connect to.
+std::string g_DataPort = "54230"; // The server data server port to connect to.
+std::string g_POLPort = "51220"; // The POL emulator port to listen on.
 std::string g_Username = ""; // The username being logged in with.
 std::string g_Password = ""; // The password being logged in with.
 char* g_CharacterList = NULL; // Pointer to the character list data being sent from the server.
@@ -253,14 +255,28 @@ int __cdecl main(int argc, char* argv[])
             continue;
         }
 
-        /* Server Port Argument */
+        /* Server Authentication Port Argument */
         if (!_strnicmp(argv[x], "--port", 6))
         {
             g_ServerPort = argv[++x];
             continue;
         }
 
-        /* Username Argument */
+		/* Server Data Port Argument */
+		if (!_strnicmp(argv[x], "--dataport", 10))
+		{
+			g_DataPort = argv[++x];
+			continue;
+		}
+		
+		/* Server POL Port Argument */
+		if (!_strnicmp(argv[x], "--polport", 9))
+		{
+			g_POLPort = argv[++x];
+			continue;
+		}
+
+		/* Username Argument */
         if (!_strnicmp(argv[x], "--user", 6))
         {
             g_Username = argv[++x];
@@ -364,7 +380,7 @@ int __cdecl main(int argc, char* argv[])
 
         /* Attempt to create socket to server..*/
         xiloader::datasocket sock;
-        if (xiloader::network::CreateConnection(&sock, "54231"))
+        if (xiloader::network::CreateConnection(&sock, g_ServerPort.c_str()))
         {
             /* Attempt to verify the users account info.. */
             while (!xiloader::network::VerifyAccount(&sock))

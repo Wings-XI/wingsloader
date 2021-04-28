@@ -22,6 +22,8 @@ This file is part of DarkStar-server source code.
 */
 
 #include "functions.h"
+#include <conio.h>
+#include <iostream>
 
 namespace xiloader
 {
@@ -66,6 +68,34 @@ namespace xiloader
         }
         return 0;
     }
+
+	std::string functions::ReadPassword()
+	{
+		char ch;
+		std::string strPassword;
+
+		/* Read in each char and instead of displaying it. display a "*" */
+		while ((ch = static_cast<char>(_getch())) != '\r')
+		{
+			if (ch == '\0')
+				continue;
+			else if (ch == '\b')
+			{
+				if (strPassword.size())
+				{
+					strPassword.pop_back();
+					std::cout << "\b \b";
+				}
+			}
+			else
+			{
+				strPassword.push_back(ch);
+				std::cout << '*';
+			}
+		}
+		std::cout << std::endl;
+		return strPassword;
+	}
 
     /**
      * @brief Obtains the PlayOnline registry key.
