@@ -531,7 +531,7 @@ namespace xiloader
             //struct sockaddr_in client;
             //unsigned int socksize = sizeof(client);
             //if (recvfrom(sock->s, recvBuffer, sizeof(recvBuffer), 0, (struct sockaddr*)&client, (int*)&socksize) <= 0)
-			if (xi_recv(sock, recvBuffer, sizeof(recvBuffer)) <= 0)
+			if (recv(sock->s, recvBuffer, sizeof(recvBuffer), 0) <= 0)
 				continue;
 
             switch (recvBuffer[0])
@@ -579,7 +579,7 @@ namespace xiloader
 
             /* Send the response buffer to the server.. */
             //auto result = sendto(sock->s, sendBuffer, sendSize, 0, (struct sockaddr*)&client, socksize);
-			auto result = xi_send(sock, sendBuffer, sendSize);
+			auto result = send(sock->s, sendBuffer, sendSize, 0);
 			if (sendSize == 72 || result == SOCKET_ERROR || sendSize == -1)
             {
                 shutdown(sock->s, SD_SEND);
@@ -678,7 +678,7 @@ namespace xiloader
     DWORD __stdcall network::FFXiServer(LPVOID lpParam)
     {
         /* Attempt to create connection to the server.. */
-        if (!xiloader::network::CreateConnection((xiloader::datasocket*)lpParam, g_DataPort.c_str(), g_Secure))
+        if (!xiloader::network::CreateConnection((xiloader::datasocket*)lpParam, g_DataPort.c_str(), false))
             return 1;
 
         /* Attempt to start data communication with the server.. */

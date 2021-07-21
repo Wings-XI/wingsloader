@@ -32,7 +32,7 @@ This file is part of DarkStar-server source code.
 xiloader::Language g_Language = xiloader::Language::English; // The language of the loader to be used for polcore.
 std::string g_ServerAddress = "game.wingsxi.com"; // The server address to connect to.
 std::string g_ServerPort = "54331"; // The server authentication server port to connect to.
-std::string g_DataPort = "54330"; // The server data server port to connect to.
+std::string g_DataPort = "54230"; // The server data server port to connect to.
 std::string g_POLPort = "51220"; // The POL emulator port to listen on.
 std::string g_Username = ""; // The username being logged in with.
 std::string g_Password = ""; // The password being logged in with.
@@ -335,9 +335,9 @@ int __cdecl main(int argc, char* argv[])
 			if (!bCustomServerPort) {
 				g_ServerPort = "54331";
 			}
-			if (!bCustomDataPort) {
-				g_DataPort = "54330";
-			}
+			//if (!bCustomDataPort) {
+			//	g_DataPort = "54330";
+			//}
 			continue;
 		}
 
@@ -348,9 +348,9 @@ int __cdecl main(int argc, char* argv[])
 			if (!bCustomServerPort) {
 				g_ServerPort = "54231";
 			}
-			if (!bCustomDataPort) {
-				g_DataPort = "54230";
-			}
+			//if (!bCustomDataPort) {
+			//	g_DataPort = "54230";
+			//}
 			continue;
 		}
 

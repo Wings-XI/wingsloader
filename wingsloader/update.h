@@ -8,8 +8,8 @@
 #ifndef INC_UPDATE_H
 #define INC_UPDATE_H
 
-#define LOADER_CURRENT_VERSION 1.10
-#define LOADER_CURRENT_VERSION_STR "1.10"
+#define LOADER_CURRENT_VERSION 1.11
+#define LOADER_CURRENT_VERSION_STR "1.11"
 
 #include <string>
 #include <windows.h>
