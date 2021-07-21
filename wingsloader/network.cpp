@@ -23,6 +23,8 @@ This file is part of DarkStar-server source code.
 
 #include "network.h"
 #include "functions.h"
+#include <algorithm>
+#include <cctype>
 
 /* Externals */
 extern std::string g_ServerAddress;
@@ -33,9 +35,34 @@ extern std::string g_DataPort;
 extern std::string g_POLPort;
 extern char* g_CharacterList;
 extern bool g_IsRunning;
+extern bool g_Secure;
+extern bool g_SecureVerify;
+extern std::string g_ServerHostname;
 
 namespace xiloader
 {
+	/* Send secure/unsecure wrapper */
+	int xi_send(datasocket* sock, char* buf, int len)
+	{
+		if (g_Secure) {
+			return SSLWrite(&sock->SSL, buf, len);
+		}
+		else {
+			return send(sock->s, buf, len, 0);
+		}
+	}
+
+	/* Receive secure/unsecure wrapper */
+	int xi_recv(datasocket* sock, char* buf, int len)
+	{
+		if (g_Secure) {
+			return SSLRead(&sock->SSL, buf, len);
+		}
+		else {
+			return recv(sock->s, buf, len, 0);
+		}
+	}
+
     /**
      * @brief Creates a connection on the given port.
      *
@@ -44,7 +71,7 @@ namespace xiloader
      *
      * @return True on success, false otherwise.
      */
-    bool network::CreateConnection(datasocket* sock, const char* port)
+    bool network::CreateConnection(datasocket* sock, const char* port, bool secure)
     {
         struct addrinfo hints;
         memset(&hints, 0x00, sizeof(hints));
@@ -83,6 +110,80 @@ namespace xiloader
                 sock->s = INVALID_SOCKET;
                 return 0;
             }
+			
+			/* Establish secure connection if needed */
+			if (secure) {
+				memset(&sock->SSL, 0, sizeof(sock->SSL));
+				DWORD result = SSLConnect(sock->s, g_ServerHostname.c_str(), &sock->SSL, g_SecureVerify);
+				if (result == 2) {
+					// Certificate validation failed
+					closesocket(sock->s);
+					sock->s = INVALID_SOCKET;
+					xiloader::console::output(xiloader::color::warning, "The remote server SSL certificate could not be validated.");
+					xiloader::console::output(xiloader::color::warning, "This could put your password at risk of being intercepted by others.");
+					DWORD dwDecision = 0;
+					std::string answer;
+					char szAnswer[16] = { 0 };
+					int cbAnswer = 0;
+					do {
+						printf("Do you wish to connect anyway? (Y/N, default=N) ");
+						fgets(szAnswer, sizeof(szAnswer) - 1, stdin);
+						cbAnswer = strlen(szAnswer);
+						if (szAnswer[cbAnswer - 1] == '\n') {
+							szAnswer[cbAnswer - 1] = '\0';
+							cbAnswer--;
+						}
+						answer = szAnswer;
+						if (answer != "") {
+							std::transform(answer.begin(), answer.end(), answer.begin(),
+								[](unsigned char c){ return std::tolower(c); });
+						}
+						if (answer == "y" || answer == "yes") {
+							dwDecision = 1;
+							break;
+						}
+						else if (answer == "n" || answer == "no") {
+							dwDecision = 2;
+						}
+						else if (answer == "") {
+							dwDecision = 2;
+						}
+						else {
+							xiloader::console::output(xiloader::color::warning, "Please type \"yes\" or \"no\"");
+						}
+					} while (dwDecision == 0);
+					if (dwDecision == 1) {
+						g_SecureVerify = false;
+						/* Attempt to create the socket.. */
+						sock->s = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
+						if (sock->s == INVALID_SOCKET)
+						{
+							xiloader::console::output(xiloader::color::error, "Failed to create socket.");
+
+							freeaddrinfo(addr);
+							return 0;
+						}
+
+						/* Attempt to connect to the server.. */
+						if (connect(sock->s, ptr->ai_addr, ptr->ai_addrlen) == SOCKET_ERROR)
+						{
+							xiloader::console::output(xiloader::color::error, "Failed to connect to server!");
+
+							closesocket(sock->s);
+							sock->s = INVALID_SOCKET;
+							return 0;
+						}
+						result = SSLConnect(sock->s, g_ServerHostname.c_str(), &sock->SSL, g_SecureVerify);
+					}
+				}
+				if (result != 1) {
+					xiloader::console::output(xiloader::color::error, "Failed to establish SSL session!");
+
+					closesocket(sock->s);
+					sock->s = INVALID_SOCKET;
+					return 0;
+				}
+			}
 
             xiloader::console::output(xiloader::color::info, "Connected to server!");
             break;
@@ -221,6 +322,10 @@ namespace xiloader
 			return "Another account is already associated to this IP address.";
 		case AUTH_SESSION_EXISTS:
 			return "A user is already connected to this account from another IP address.";
+		case AUTH_IP_BLOCKED:
+			return "Connections from this IP address are not allowed.";
+		case AUTH_IP_LOCKED_OUT:
+			return "Too many failed connections. Try again later.";
 		default:
 			return "Unknown error: " + std::to_string(ErrorCode);
 		}
@@ -246,7 +351,7 @@ namespace xiloader
         /* Create connection if required.. */
         if (sock->s == NULL || sock->s == INVALID_SOCKET)
         {
-            if (!xiloader::network::CreateConnection(sock, g_ServerPort.c_str()))
+            if (!xiloader::network::CreateConnection(sock, g_ServerPort.c_str(), g_Secure))
                 return false;
         }
 
@@ -346,8 +451,10 @@ namespace xiloader
         memcpy(sendBuffer + 0x10, g_Password.c_str(), 16);
 
         /* Send info to server and obtain response.. */
-        send(sock->s, (char*)sendBuffer, wSendSize, 0);
-        recv(sock->s, (char*)recvBuffer, 16, 0);
+		xi_send(sock, (char*)sendBuffer, wSendSize);
+		xi_recv(sock, (char*)recvBuffer, 16);
+        // send(sock->s, (char*)sendBuffer, wSendSize, 0);
+        // recv(sock->s, (char*)recvBuffer, 16, 0);
 
         /* Handle the obtained result.. */
         switch (recvBuffer[0])
@@ -421,10 +528,11 @@ namespace xiloader
         while (g_IsRunning)
         {
             /* Attempt to receive the incoming data.. */
-            struct sockaddr_in client;
-            unsigned int socksize = sizeof(client);
-            if (recvfrom(sock->s, recvBuffer, sizeof(recvBuffer), 0, (struct sockaddr*)&client, (int*)&socksize) <= 0)
-                continue;
+            //struct sockaddr_in client;
+            //unsigned int socksize = sizeof(client);
+            //if (recvfrom(sock->s, recvBuffer, sizeof(recvBuffer), 0, (struct sockaddr*)&client, (int*)&socksize) <= 0)
+			if (xi_recv(sock, recvBuffer, sizeof(recvBuffer)) <= 0)
+				continue;
 
             switch (recvBuffer[0])
             {
@@ -470,8 +578,9 @@ namespace xiloader
                 continue;
 
             /* Send the response buffer to the server.. */
-            auto result = sendto(sock->s, sendBuffer, sendSize, 0, (struct sockaddr*)&client, socksize);
-            if (sendSize == 72 || result == SOCKET_ERROR || sendSize == -1)
+            //auto result = sendto(sock->s, sendBuffer, sendSize, 0, (struct sockaddr*)&client, socksize);
+			auto result = xi_send(sock, sendBuffer, sendSize);
+			if (sendSize == 72 || result == SOCKET_ERROR || sendSize == -1)
             {
                 shutdown(sock->s, SD_SEND);
                 closesocket(sock->s);
@@ -569,7 +678,7 @@ namespace xiloader
     DWORD __stdcall network::FFXiServer(LPVOID lpParam)
     {
         /* Attempt to create connection to the server.. */
-        if (!xiloader::network::CreateConnection((xiloader::datasocket*)lpParam, g_DataPort.c_str()))
+        if (!xiloader::network::CreateConnection((xiloader::datasocket*)lpParam, g_DataPort.c_str(), g_Secure))
             return 1;
 
         /* Attempt to start data communication with the server.. */

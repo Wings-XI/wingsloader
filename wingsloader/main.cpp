@@ -31,8 +31,8 @@ This file is part of DarkStar-server source code.
 /* Global Variables */
 xiloader::Language g_Language = xiloader::Language::English; // The language of the loader to be used for polcore.
 std::string g_ServerAddress = "game.wingsxi.com"; // The server address to connect to.
-std::string g_ServerPort = "54231"; // The server authentication server port to connect to.
-std::string g_DataPort = "54230"; // The server data server port to connect to.
+std::string g_ServerPort = "54331"; // The server authentication server port to connect to.
+std::string g_DataPort = "54330"; // The server data server port to connect to.
 std::string g_POLPort = "51220"; // The POL emulator port to listen on.
 std::string g_Username = ""; // The username being logged in with.
 std::string g_Password = ""; // The password being logged in with.
@@ -43,11 +43,16 @@ bool g_CheckUpdate = true; // Whether to check and possibly autoupdate on startu
 DWORD g_UpdatePhase = 0; // Are we in the middle of an update process
 std::string g_OldFile = ""; // If in an update process, full file path of the old loader
 DWORD g_OldPID = 0; // If in an update process, PID of the parent
+bool g_Secure = true; // Use an SSL secure connection for auth and data
+bool g_SecureVerify = true; // Verify remote server's certificate
 
 
 /* Hairpin Fix Variables */
 DWORD g_NewServerAddress; // Hairpin server address to be overriden with.
 DWORD g_HairpinReturnAddress; // Hairpin return address to allow the code cave to return properly.
+
+/* Keeping server hostname in memory for SSL */
+std::string g_ServerHostname = g_ServerAddress;
 
 /**
  * @brief Detour function definitions.
@@ -200,6 +205,8 @@ inline LPVOID FindCharacters(void** commFuncs)
 int __cdecl main(int argc, char* argv[])
 {
     bool bUseHairpinFix = false;
+	bool bCustomServerPort = false;
+	bool bCustomDataPort = false;
 
     /* Output the DarkStar banner.. */
     xiloader::console::output(xiloader::color::lightred, "==========================================================");
@@ -249,49 +256,51 @@ int __cdecl main(int argc, char* argv[])
     for (auto x = 1; x < argc; ++x)
     {
         /* Server Address Argument */
-        if (!_strnicmp(argv[x], "--server", 8))
+        if (!_stricmp(argv[x], "--server"))
         {
             g_ServerAddress = argv[++x];
             continue;
         }
 
         /* Server Authentication Port Argument */
-        if (!_strnicmp(argv[x], "--port", 6))
+        if (!_stricmp(argv[x], "--port"))
         {
             g_ServerPort = argv[++x];
+			bCustomServerPort = true;
             continue;
         }
 
 		/* Server Data Port Argument */
-		if (!_strnicmp(argv[x], "--dataport", 10))
+		if (!_stricmp(argv[x], "--dataport"))
 		{
 			g_DataPort = argv[++x];
+			bCustomDataPort = true;
 			continue;
 		}
 		
 		/* Server POL Port Argument */
-		if (!_strnicmp(argv[x], "--polport", 9))
+		if (!_stricmp(argv[x], "--polport"))
 		{
 			g_POLPort = argv[++x];
 			continue;
 		}
 
 		/* Username Argument */
-        if (!_strnicmp(argv[x], "--user", 6))
+        if (!_stricmp(argv[x], "--user"))
         {
             g_Username = argv[++x];
             continue;
         }
 
         /* Password Argument */
-        if (!_strnicmp(argv[x], "--pass", 6))
+        if (!_stricmp(argv[x], "--pass"))
         {
             g_Password = argv[++x];
             continue;
         }
 
         /* Language Argument */
-        if (!_strnicmp(argv[x], "--lang", 6))
+        if (!_stricmp(argv[x], "--lang"))
         {
             std::string language = argv[++x];
 
@@ -306,44 +315,77 @@ int __cdecl main(int argc, char* argv[])
         }
 
         /* Hairpin Argument */
-        if (!_strnicmp(argv[x], "--hairpin", 9))
+        if (!_stricmp(argv[x], "--hairpin"))
         {
             bUseHairpinFix = true;
             continue;
         }
 
         /* Hide Argument */
-        if (!_strnicmp(argv[x], "--hide", 6))
+        if (!_stricmp(argv[x], "--hide"))
         {
             g_Hide = true;
             continue;
         }
 
-		if (!_strnicmp(argv[x], "--noupdate", 10))
+		/* Force SSL on */
+		if (!_stricmp(argv[x], "--ssl"))
+		{
+			g_Secure = true;
+			if (!bCustomServerPort) {
+				g_ServerPort = "54331";
+			}
+			if (!bCustomDataPort) {
+				g_DataPort = "54330";
+			}
+			continue;
+		}
+
+		/* Force SSL off */
+		if (!_stricmp(argv[x], "--nossl"))
+		{
+			g_Secure = false;
+			if (!bCustomServerPort) {
+				g_ServerPort = "54231";
+			}
+			if (!bCustomDataPort) {
+				g_DataPort = "54230";
+			}
+			continue;
+		}
+
+		/* Do not verify remote server certificate */
+		if (!_stricmp(argv[x], "--sslnoverify"))
+		{
+			g_SecureVerify = false;
+			continue;
+		}
+
+		if (!_stricmp(argv[x], "--noupdate"))
 		{
 			g_CheckUpdate = false;
 			continue;
 		}
 
-		if (!_strnicmp(argv[x], "--runupdate", 11))
+		if (!_stricmp(argv[x], "--runupdate"))
 		{
 			g_UpdatePhase = 1;
 			continue;
 		}
 
-		if (!_strnicmp(argv[x], "--finishupdate", 14))
+		if (!_stricmp(argv[x], "--finishupdate"))
 		{
 			g_UpdatePhase = 2;
 			continue;
 		}
 
-		if (!_strnicmp(argv[x], "--oldfile", 9))
+		if (!_stricmp(argv[x], "--oldfile"))
 		{
 			g_OldFile = argv[++x];
 			continue;
 		}
 
-		if (!_strnicmp(argv[x], "--oldpid", 8))
+		if (!_stricmp(argv[x], "--oldpid"))
 		{
 			g_OldPID = strtoul(argv[++x], NULL, 0);
 			continue;
@@ -374,13 +416,14 @@ int __cdecl main(int argc, char* argv[])
 
 	/* Attempt to resolve the server address.. */
     ULONG ulAddress = 0;
+	g_ServerHostname = g_ServerAddress;
     if (xiloader::network::ResolveHostname(g_ServerAddress.c_str(), &ulAddress))
     {
         g_ServerAddress = inet_ntoa(*((struct in_addr*)&ulAddress));
 
         /* Attempt to create socket to server..*/
         xiloader::datasocket sock;
-        if (xiloader::network::CreateConnection(&sock, g_ServerPort.c_str()))
+        if (xiloader::network::CreateConnection(&sock, g_ServerPort.c_str(), g_Secure))
         {
             /* Attempt to verify the users account info.. */
             while (!xiloader::network::VerifyAccount(&sock))

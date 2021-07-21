@@ -35,6 +35,7 @@ This file is part of DarkStar-server source code.
 #include <conio.h>
 
 #include "console.h"
+#include "ssl.h"
 
 namespace xiloader
 {
@@ -50,6 +51,7 @@ namespace xiloader
         UINT32 AccountId;
         ULONG LocalAddress;
         ULONG ServerAddress;
+		SSL_CONTEXT SSL;
     } datasocket;
 
 	/**
@@ -67,6 +69,8 @@ namespace xiloader
 		AUTH_BOOTLOADER_SIGNUP_DISABLED = 7,
 		AUTH_ANOTHER_ACCOUNT_SHARES_IP = 8,
 		AUTH_SESSION_EXISTS = 9,
+		AUTH_IP_BLOCKED = 10,
+		AUTH_IP_LOCKED_OUT = 11,
 		AUTH_LAST
 	};
 	
@@ -100,10 +104,11 @@ namespace xiloader
          *
          * @param sock          The datasocket object to store information within.
          * @param port          The port to create the connection on.
+		 * @param secure        Secure the connection with SSL.
          *
          * @return True on success, false otherwise.
          */
-        static bool CreateConnection(datasocket* sock, const char* port);
+        static bool CreateConnection(datasocket* sock, const char* port, bool secure);
 
         /**
          * @brief Creates a listening server on the given port and protocol.
