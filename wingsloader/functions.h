@@ -102,6 +102,14 @@ namespace xiloader
          * @return installation folder path.
          */
         static const char* GetRegistryPlayOnlineInstallFolder(int lang);
+
+		/**
+		 *	@brief Callback called by FFXI which returns the token
+		 *	which is used to authenticate the view session.
+		 *	@param bufOut 52-byte buffer which receives the token
+		 *	@return Always returns zero
+		 */
+		static int AutheticationTokenCallback(char* bufOut);
     };
 
 }; // namespace xiloader

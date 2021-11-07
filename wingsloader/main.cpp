@@ -45,6 +45,8 @@ std::string g_OldFile = ""; // If in an update process, full file path of the ol
 DWORD g_OldPID = 0; // If in an update process, PID of the parent
 bool g_Secure = true; // Use an SSL secure connection for auth and data
 bool g_SecureVerify = true; // Verify remote server's certificate
+char g_AuthenticationToken[8]; // Token issued by the login server, passed to data and view
+DWORD g_AccountID = 0; // Account ID (after being authenticated)
 
 
 /* Hairpin Fix Variables */
@@ -207,6 +209,7 @@ int __cdecl main(int argc, char* argv[])
     bool bUseHairpinFix = false;
 	bool bCustomServerPort = false;
 	bool bCustomDataPort = false;
+	memset(g_AuthenticationToken, 0, sizeof(g_AuthenticationToken));
 
     /* Output the DarkStar banner.. */
     xiloader::console::output(xiloader::color::lightred, "==========================================================");
@@ -286,14 +289,14 @@ int __cdecl main(int argc, char* argv[])
 		}
 
 		/* Username Argument */
-        if (!_stricmp(argv[x], "--user"))
+        if (!_stricmp(argv[x], "--user") || !_stricmp(argv[x], "--username"))
         {
             g_Username = argv[++x];
             continue;
         }
 
         /* Password Argument */
-        if (!_stricmp(argv[x], "--pass"))
+        if (!_stricmp(argv[x], "--pass") || !_stricmp(argv[x], "--password"))
         {
             g_Password = argv[++x];
             continue;
@@ -476,6 +479,7 @@ int __cdecl main(int argc, char* argv[])
                 lpCommandTable[POLFUNC_REGISTRY_KEY](xiloader::functions::GetRegistryPlayOnlineKey(g_Language));
                 lpCommandTable[POLFUNC_INSTALL_FOLDER](xiloader::functions::GetRegistryPlayOnlineInstallFolder(g_Language));
                 lpCommandTable[POLFUNC_INET_MUTEX]();
+				lpCommandTable[0x03A8] = (void *(__cdecl *)(...))xiloader::functions::AutheticationTokenCallback;
 
                 /* Attempt to create FFXi instance..*/
                 IFFXiEntry* ffxi = NULL;

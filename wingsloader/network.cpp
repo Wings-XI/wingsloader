@@ -38,6 +38,8 @@ extern bool g_IsRunning;
 extern bool g_Secure;
 extern bool g_SecureVerify;
 extern std::string g_ServerHostname;
+extern char g_AuthenticationToken[8];
+extern DWORD g_AccountID;
 
 namespace xiloader
 {
@@ -462,6 +464,8 @@ namespace xiloader
         case 0x0001: // Success (Login)
             xiloader::console::output(xiloader::color::success, "Successfully logged in as %s!", g_Username.c_str());
             sock->AccountId = *(UINT32*)(recvBuffer + 0x01);
+			g_AccountID = sock->AccountId;
+			memcpy(g_AuthenticationToken, recvBuffer + 0x07, 8);
             closesocket(sock->s);
             sock->s = INVALID_SOCKET;
             return true;
@@ -524,6 +528,7 @@ namespace xiloader
         int sendSize = 0;
         char recvBuffer[4096] = { 0 };
         char sendBuffer[4096] = { 0 };
+		bool suppressDisplay = false;
 
         while (g_IsRunning)
         {
@@ -540,11 +545,27 @@ namespace xiloader
                 sendBuffer[0] = 0xA1u;
                 memcpy(sendBuffer + 0x01, &sock->AccountId, 4);
                 memcpy(sendBuffer + 0x05, &sock->ServerAddress, 4);
-                xiloader::console::output(xiloader::color::warning, "Sending account id..");
+				if (!suppressDisplay) {
+					xiloader::console::output(xiloader::color::warning, "Sending account id..");
+					suppressDisplay = true;
+				}
                 sendSize = 9;
                 break;
 
-            case 0x0002:
+			case 0x0004:
+				sendBuffer[0] = 0xA3u;
+				memcpy(sendBuffer + 0x01, &sock->AccountId, 4);
+				memcpy(sendBuffer + 0x05, &sock->ServerAddress, 4);
+				memcpy(sendBuffer + 0x09, g_AuthenticationToken, 8);
+				memset(sendBuffer + 0x11, 0, 16);
+				if (!suppressDisplay) {
+					xiloader::console::output(xiloader::color::warning, "Sending account id and token..");
+					suppressDisplay = true;
+				}
+				sendSize = 33;
+				break;
+			
+			case 0x0002:
             case 0x0015:
                 memcpy(sendBuffer, (char*)"\xA2\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x58\xE0\x5D\xAD\x00\x00\x00\x00", 25);
                 xiloader::console::output(xiloader::color::warning, "Sending key..");

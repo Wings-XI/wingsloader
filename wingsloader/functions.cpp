@@ -25,6 +25,9 @@ This file is part of DarkStar-server source code.
 #include <conio.h>
 #include <iostream>
 
+extern char g_AuthenticationToken[8];
+extern DWORD g_AccountID;
+
 namespace xiloader
 {
     /**
@@ -189,5 +192,14 @@ namespace xiloader
 
         return InstallFolder;
     }
+
+	int functions::AutheticationTokenCallback(char* bufOut)
+	{
+		//strncpy(bufOut, "qwertyuiopQWERTYUIOPasdfghjklASDFGHJKLzxcvbnmZXCVBNM", 0x34);
+		memset(bufOut, 0, 0x34);
+		memcpy(bufOut, &g_AccountID, sizeof(g_AccountID));
+		memcpy(bufOut + sizeof(g_AccountID), g_AuthenticationToken, sizeof(g_AuthenticationToken));
+		return 0;
+	}
 
 }; // namespace xiloader
