@@ -40,6 +40,9 @@ extern bool g_SecureVerify;
 extern std::string g_ServerHostname;
 extern char g_AuthenticationToken[8];
 extern DWORD g_AccountID;
+extern bool g_DoingOTP;
+extern std::string g_CurrentOTP;
+extern std::string g_NewPassword;
 
 namespace xiloader
 {
@@ -328,6 +331,10 @@ namespace xiloader
 			return "Connections from this IP address are not allowed.";
 		case AUTH_IP_LOCKED_OUT:
 			return "Too many failed connections. Try again later.";
+		case AUTH_NEED_OTP:
+			return "This account requires a two factor authentication code.";
+		case AUTH_BAD_OTP:
+			return "Incorrect one time code.";
 		default:
 			return "Unknown error: " + std::to_string(ErrorCode);
 		}
@@ -343,6 +350,7 @@ namespace xiloader
     bool network::VerifyAccount(datasocket* sock)
     {
         static bool bFirstLogin = true;
+		static unsigned char cLastOp = 0;
 		uint16_t wFailureReason = 0;
 		std::string strFailReason;
 		uint16_t wSendSize = 33;
@@ -358,7 +366,7 @@ namespace xiloader
         }
 
         /* Determine if we should auto-login.. */
-        bool bUseAutoLogin = !g_Username.empty() && !g_Password.empty() && bFirstLogin;
+        bool bUseAutoLogin = !g_Username.empty() && !g_Password.empty() && (bFirstLogin || g_DoingOTP);
         if (bUseAutoLogin)
             xiloader::console::output(xiloader::color::lightgreen, "Autologin activated!");
 
@@ -373,7 +381,6 @@ namespace xiloader
             printf("\nEnter a selection: ");
 
             std::string input;
-			std::string strNewPassword;
             std::cin >> input;
             std::cout << std::endl;
 
@@ -421,12 +428,12 @@ namespace xiloader
 					std::cout << "Password: ";
 					g_Password = functions::ReadPassword();
 					std::cout << "New Password (6-15 characters): ";
-					strNewPassword = functions::ReadPassword();
+					g_NewPassword = functions::ReadPassword();
 					std::cout << "Repeat Password               : ";
 					input = functions::ReadPassword();
 					std::cout << std::endl;
 
-					if (input != strNewPassword)
+					if (input != g_NewPassword)
 					{
 						xiloader::console::output(xiloader::color::error, "Passwords did not match! Please try again.");
 						continue;
@@ -434,7 +441,7 @@ namespace xiloader
 					break;
 				}
 
-				memcpy(sendBuffer + 0x21, strNewPassword.c_str(), 16);
+				memcpy(sendBuffer + 0x21, g_NewPassword.c_str(), 16);
 				sendBuffer[0x20] = 0x80;
 				wSendSize += 16;
 			}
@@ -443,8 +450,30 @@ namespace xiloader
         }
         else
         {
-            /* User has auto-login enabled.. */
-            sendBuffer[0x20] = 0x10;
+			if (g_DoingOTP) {
+				// Ask for one time code then repeat login attempt with same
+				// user and password
+				g_SuppressOutput = false;
+				xiloader::console::output("This account requires two-factor authentication. Please enter the code shown in the authenticator app.");
+				std::cout << "\nOne time code: ";
+				std::cin >> g_CurrentOTP;
+				std::cout << std::endl;
+				wSendSize += 82;
+				memcpy(sendBuffer + 0x63, g_CurrentOTP.c_str(), 16);
+				g_DoingOTP = false;
+				if (cLastOp == 0x80) {
+					// They were changing password
+					sendBuffer[0x20] = 0x80;
+					memcpy(sendBuffer + 0x21, g_NewPassword.c_str(), 16);
+				}
+				else {
+					sendBuffer[0x20] = 0x10;
+				}
+			}
+			else {
+				/* User has auto-login enabled.. */
+				sendBuffer[0x20] = 0x10;
+			}
         }
 		bFirstLogin = false;
 
@@ -473,10 +502,15 @@ namespace xiloader
         case 0x0002: // Error (Login)
 			wFailureReason = *reinterpret_cast<uint16_t*>(recvBuffer + 5);
 			strFailReason = wFailureReason ? TranslateErrorCode(static_cast<AUTHENTICATION_ERROR>(wFailureReason)) : "";
-            xiloader::console::output(xiloader::color::error, "Failed to login. %s", strFailReason.c_str());
             closesocket(sock->s);
             sock->s = INVALID_SOCKET;
-            return false;
+			if (wFailureReason == AUTH_NEED_OTP) {
+				g_DoingOTP = true;
+				g_SuppressOutput = true;
+				cLastOp = 0x10;
+			}
+			xiloader::console::output(xiloader::color::error, "Failed to login. %s", strFailReason.c_str());
+			return false;
 
         case 0x0003: // Success (Create Account)
             xiloader::console::output(xiloader::color::success, "Account successfully created!");
@@ -501,9 +535,14 @@ namespace xiloader
 		case 0x0006: // Error (Change Password)
 			wFailureReason = *reinterpret_cast<uint16_t*>(recvBuffer + 5);
 			strFailReason = wFailureReason ? TranslateErrorCode(static_cast<AUTHENTICATION_ERROR>(wFailureReason)) : "";
-			xiloader::console::output(xiloader::color::error, "Failed to change password. %s", strFailReason.c_str());
 			closesocket(sock->s);
 			sock->s = INVALID_SOCKET;
+			if (wFailureReason == AUTH_NEED_OTP) {
+				g_DoingOTP = true;
+				g_SuppressOutput = true;
+				cLastOp = 0x80;
+			}
+			xiloader::console::output(xiloader::color::error, "Failed to change password. %s", strFailReason.c_str());
 			return false;
 
 		}

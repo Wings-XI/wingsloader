@@ -47,6 +47,10 @@ bool g_Secure = true; // Use an SSL secure connection for auth and data
 bool g_SecureVerify = true; // Verify remote server's certificate
 char g_AuthenticationToken[8]; // Token issued by the login server, passed to data and view
 DWORD g_AccountID = 0; // Account ID (after being authenticated)
+bool g_DoingOTP = false; // Currently in the state of requesting one time password
+std::string g_CurrentOTP; // Last OTP received from user
+std::string g_NewPassword; // New password (only when changing password)
+bool g_SuppressOutput; // Suppress all console output
 
 
 /* Hairpin Fix Variables */
@@ -212,14 +216,14 @@ int __cdecl main(int argc, char* argv[])
 	memset(g_AuthenticationToken, 0, sizeof(g_AuthenticationToken));
 
     /* Output the DarkStar banner.. */
-    xiloader::console::output(xiloader::color::lightred, "==========================================================");
+    xiloader::console::output(xiloader::color::lightred, "==============================================================");
     xiloader::console::output(xiloader::color::lightgreen, "DarkStar Boot Loader (c) 2015 DarkStar Team");
     xiloader::console::output(xiloader::color::lightpurple, "Git Repo   : https://github.com/DarkstarProject/darkstar");
-	xiloader::console::output(xiloader::color::lightgreen, "Modified for use with the Wings Project (c) 2021 Wings");
+	xiloader::console::output(xiloader::color::lightgreen, "Modified for use with the Wings Project (c) 2021-2022 Wings");
 	xiloader::console::output(xiloader::color::lightgreen, "Version: " LOADER_CURRENT_VERSION_STR);
 	xiloader::console::output(xiloader::color::lightpurple, "Website    : https://www.wingsxi.com");
 	xiloader::console::output(xiloader::color::lightpurple, "Git Repo   : https://gitlab.com/ffxiwings/wings");
-	xiloader::console::output(xiloader::color::lightred, "==========================================================");
+	xiloader::console::output(xiloader::color::lightred, "==============================================================");
 
     /* Initialize Winsock */
     WSADATA wsaData = { 0 };

@@ -71,6 +71,8 @@ namespace xiloader
 		AUTH_SESSION_EXISTS = 9,
 		AUTH_IP_BLOCKED = 10,
 		AUTH_IP_LOCKED_OUT = 11,
+		AUTH_NEED_OTP = 12,
+		AUTH_BAD_OTP = 13,
 		AUTH_LAST
 	};
 	

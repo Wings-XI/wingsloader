@@ -33,6 +33,8 @@ This file is part of DarkStar-server source code.
 #include <string>
 #include <ctime>
 
+extern bool g_SuppressOutput;
+
 namespace xiloader
 {
     /**
@@ -122,6 +124,10 @@ namespace xiloader
         template<typename... Args>
         static void output(xiloader::color c, char const* format, Args... args)
         {
+			if (g_SuppressOutput) {
+				return;
+			}
+
             /* Get the current timestamp */
             ::__time32_t rawtime;
             ::_time32(&rawtime);
